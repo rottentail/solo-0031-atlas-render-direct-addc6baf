@@ -13,7 +13,8 @@
     "技术讨论",
     "问题排查与诊断",
     "部署运维",
-    "泛Agent需求"
+    "泛Agent需求",
+    "Bugfix"
   ],
   "type_coverage": {
     "功能开发": {
@@ -107,8 +108,13 @@
       ]
     },
     "Bugfix": {
-      "status": "no_verified_defect",
-      "reason": "基线未预埋缺陷；尚无确认的可复现或代码证明契约违例，不生成Bugfix题"
+      "status": "injection_requested",
+      "reason": "用户明确要求在隔离私有任务分支设计并预埋困难缺陷；健康基线仍未含已验证缺陷，只有完成独立评审与H/B探针后才登记活动Bugfix题",
+      "source_anchors": [
+        "internal/service/jobs.go",
+        "internal/engine/worker.go",
+        "internal/persist/store.go"
+      ]
     }
   },
   "prompt_contract": {
