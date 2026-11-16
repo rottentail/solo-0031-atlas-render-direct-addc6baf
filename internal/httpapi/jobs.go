@@ -12,12 +12,12 @@ func (a API) submit(w http.ResponseWriter, r *http.Request) {
 		Scale      int    `json:"scale"`
 	}
 	if e := decode(w, r, &b); e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	v, e := a.Service.Submit(b.SnapshotID, b.Scale, r.Header.Get("Idempotency-Key"))
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	v.Payload = model.Snapshot{}
@@ -26,7 +26,7 @@ func (a API) submit(w http.ResponseWriter, r *http.Request) {
 func (a API) getJob(w http.ResponseWriter, r *http.Request) {
 	v, ok := a.Service.Store.Read().Jobs[r.PathValue("id")]
 	if !ok {
-		fail(w, model.Missing("job not found"))
+		fail(w, r, model.Missing("job not found"))
 		return
 	}
 	v.Payload = model.Snapshot{}
@@ -35,7 +35,7 @@ func (a API) getJob(w http.ResponseWriter, r *http.Request) {
 func (a API) cancel(w http.ResponseWriter, r *http.Request) {
 	v, e := a.Service.Cancel(r.PathValue("id"))
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	a.Worker.Cancel(v.ID)
@@ -45,7 +45,7 @@ func (a API) cancel(w http.ResponseWriter, r *http.Request) {
 func (a API) retry(w http.ResponseWriter, r *http.Request) {
 	v, e := a.Service.Retry(r.PathValue("id"))
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	v.Payload = model.Snapshot{}
@@ -54,7 +54,7 @@ func (a API) retry(w http.ResponseWriter, r *http.Request) {
 func (a API) download(w http.ResponseWriter, r *http.Request) {
 	v, e := a.Service.Artifact(r.PathValue("id"))
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	etag := `"` + v.Digest + `"`
@@ -69,7 +69,7 @@ func (a API) download(w http.ResponseWriter, r *http.Request) {
 }
 func (a API) purge(w http.ResponseWriter, r *http.Request) {
 	if e := a.Service.Purge(r.PathValue("id")); e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	write(w, 200, map[string]string{"state": "purged"})
@@ -80,22 +80,22 @@ func (a API) compare(w http.ResponseWriter, r *http.Request) {
 		Right string `json:"right"`
 	}
 	if e := decode(w, r, &b); e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	left, e := a.Service.Artifact(b.Left)
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	right, e := a.Service.Artifact(b.Right)
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	v, e := observe.Compare(left, right)
 	if e != nil {
-		fail(w, e)
+		fail(w, r, e)
 		return
 	}
 	write(w, 200, v)

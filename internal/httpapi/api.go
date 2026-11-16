@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
+	"strings"
 )
 
 type API struct {
@@ -20,14 +22,53 @@ func write(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-func fail(w http.ResponseWriter, e error) {
+
+// wantsDiagnostics reports whether the client opted into the structured error
+// protocol. The choice is per request; old clients keep receiving the legacy
+// {"code","error"} envelope unchanged. An explicit Atlas-Diagnostics: v1 asks
+// for the legacy representation even if the Accept header would opt in, which
+// keeps header-precedence unambiguous for clients that set both.
+func wantsDiagnostics(r *http.Request) bool {
+	switch strings.ToLower(strings.TrimSpace(r.Header.Get("Atlas-Diagnostics"))) {
+	case "v2":
+		return true
+	case "v1", "legacy":
+		return false
+	}
+	for _, part := range strings.Split(r.Header.Get("Accept"), ",") {
+		mediaType, _, e := mime.ParseMediaType(strings.TrimSpace(part))
+		if e != nil {
+			continue
+		}
+		if strings.EqualFold(mediaType, model.DiagnosticsMediaType) {
+			return true
+		}
+	}
+	return false
+}
+
+func fail(w http.ResponseWriter, r *http.Request, e error) {
 	var de *model.Error
-	if errors.As(e, &de) {
-		write(w, de.Status, map[string]string{"code": de.Code, "error": de.Message})
+	if !errors.As(e, &de) {
+		write(w, 500, map[string]string{"code": "internal", "error": "operation could not be committed"})
 		return
 	}
-	write(w, 500, map[string]string{"code": "internal", "error": "operation could not be committed"})
+	report := de.Report()
+	if report != nil {
+		// The representation depends on the negotiation headers for every
+		// response that has a v2 form, including the legacy fallback below, so
+		// a shared cache cannot replay one form for the other.
+		w.Header().Set("Vary", "Accept, Atlas-Diagnostics")
+	}
+	if report != nil && wantsDiagnostics(r) {
+		w.Header().Set("Content-Type", model.DiagnosticsMediaType)
+		w.WriteHeader(de.Status)
+		_ = json.NewEncoder(w).Encode(report)
+		return
+	}
+	write(w, de.Status, map[string]string{"code": de.Code, "error": de.Message})
 }
+
 func decode(w http.ResponseWriter, r *http.Request, dst any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 12<<20))
 	d.DisallowUnknownFields()
@@ -42,7 +83,9 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) error {
 }
 func (a API) Handler() http.Handler {
 	m := http.NewServeMux()
-	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { write(w, 200, map[string]string{"status": "ready"}) })
+	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		write(w, 200, map[string]string{"status": "ready"})
+	})
 	m.HandleFunc("PUT /v1/scenes/{id}", a.putScene)
 	m.HandleFunc("GET /v1/scenes/{id}", a.getScene)
 	m.HandleFunc("POST /v1/scenes/{id}/state", a.sceneState)

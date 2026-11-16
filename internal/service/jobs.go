@@ -29,8 +29,11 @@ func (s *Service) Submit(snapshotID string, scale int, key string) (model.Job, e
 		if snap.State != "active" {
 			return model.Conflict("snapshot is revoked")
 		}
+		// Compile before the job is recorded. A rejected snapshot never becomes
+		// a queued job, and the diagnostics describe exactly this snapshot
+		// content and scale.
 		if _, e := raster.Compile(snap, scale); e != nil {
-			return e
+			return model.AttachSubject(e, model.SnapshotSubject("submit", snap, scale))
 		}
 		pending := 0
 		for _, j := range st.Jobs {

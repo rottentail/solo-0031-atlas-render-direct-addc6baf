@@ -15,8 +15,9 @@ func (s *Service) PutScene(id, name string, expected int, d model.Document) (mod
 	if !scene.ValidID(id) || strings.TrimSpace(name) == "" || len(name) > 160 {
 		return out, model.Invalid("invalid scene id or name")
 	}
+	subject := model.DocumentSubject("save", id, d)
 	if e := scene.Validate(d); e != nil {
-		return out, e
+		return out, model.AttachSubject(e, subject)
 	}
 	e := s.Store.Update(func(st *model.State) error {
 		old, ok := st.Scenes[id]
@@ -29,7 +30,7 @@ func (s *Service) PutScene(id, name string, expected int, d model.Document) (mod
 		for _, ref := range scene.References(d) {
 			a, ok := st.Assets[ref]
 			if !ok || a.State != "available" {
-				return model.Conflict("scene references unavailable asset")
+				return unavailableAsset(subject, "scene references unavailable asset", d, ref, ok && a.State == "retired")
 			}
 		}
 		out = model.Scene{ID: id, Name: name, Revision: old.Revision + 1, State: "active", Document: d, UpdatedAt: time.Now().UTC()}
@@ -76,11 +77,12 @@ func (s *Service) Freeze(id string, expected int) (model.Snapshot, error) {
 		if v.Revision != expected || v.State != "active" {
 			return model.Conflict("scene revision or state changed")
 		}
+		subject := model.DocumentSubject("freeze", id, v.Document)
 		assets := map[string]model.Asset{}
 		for _, ref := range scene.References(v.Document) {
 			a, ok := st.Assets[ref]
 			if !ok || a.State != "available" {
-				return model.Conflict("snapshot references unavailable asset")
+				return unavailableAsset(subject, "snapshot references unavailable asset", v.Document, ref, ok && a.State == "retired")
 			}
 			assets[ref] = a
 		}
@@ -106,4 +108,32 @@ func (s *Service) Revoke(id string) error {
 		st.Emit("snapshot.revoked", id)
 		return nil
 	})
+}
+
+// unavailableAsset explains a reference failure relative to the submitted
+// document, listing every layer that depends on the asset. The legacy message
+// and 409 status are preserved.
+func unavailableAsset(subject model.DiagnosticSubject, legacyMessage string, d model.Document, ref string, retired bool) error {
+	state := "missing"
+	if retired {
+		state = "retired"
+	}
+	locations := scene.LocationsForAsset(d, ref)
+	main := model.LayerLocator{Path: "/layers"}
+	related := make([]model.LayerLocator, 0, len(locations))
+	for _, loc := range locations {
+		if len(related) == 0 {
+			main = loc
+		}
+		related = append(related, loc)
+	}
+	if len(related) == 0 {
+		related = nil
+	}
+	return model.AttachSubject(model.DiagnosedStatus(409, "conflict", legacyMessage, model.Diagnostic{
+		Code: "asset.unavailable", Severity: "error",
+		Message: "asset " + ref + " is " + state + " and cannot back the submitted layers",
+		Layer:   &main, Field: "assetId", Related: related,
+		Evidence: map[string]any{"assetId": ref, "state": state, "referenceCount": len(locations)},
+	}), subject)
 }

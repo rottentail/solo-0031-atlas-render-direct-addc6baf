@@ -350,6 +350,28 @@
         "通过存储或渲染结果观察已提交事实"
       ],
       "verification": "python3 scripts/walkthrough.py --workflow observe-service"
+    },
+    {
+      "id": "diagnose-rejection",
+      "name": "结构化定位拒绝原因",
+      "entry": "PUT /v1/scenes/{id} / POST /v1/imports/{id} / POST /v1/jobs",
+      "success": "可选v2诊断绑定被检查内容并指回图层路径",
+      "failure": "内容未变时摘要与诊断一致，无法绑定内容的错误保持原格式",
+      "module_ids": [
+        "httpapi",
+        "service",
+        "scene",
+        "raster",
+        "bundle",
+        "persist",
+        "model",
+        "codec"
+      ],
+      "steps": [
+        "经公开HTTP入口完成领域转换",
+        "通过存储或渲染结果观察已提交事实"
+      ],
+      "verification": "python3 scripts/walkthrough.py --workflow diagnose-rejection"
     }
   ],
   "complexity": {

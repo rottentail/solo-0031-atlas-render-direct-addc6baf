@@ -23,6 +23,7 @@ python3 scripts/walkthrough.py --workflow retry-render
 python3 scripts/walkthrough.py --workflow recover-render
 python3 scripts/walkthrough.py --workflow import-package
 python3 scripts/walkthrough.py --workflow compare-renders
+python3 scripts/walkthrough.py --workflow diagnose-rejection
 ```
 
 脚本在临时状态目录启动实际服务，通过 HTTP 完成操作后停止服务，输出任务状态和 PNG 摘要；`--out` 保存可查看的合成示例。恢复流程会强制结束脚本自己启动的服务进程，再验证恢复结果。所有工作流编号见 `.project-manifest.json`。
@@ -35,6 +36,10 @@ python3 scripts/walkthrough.py --workflow compare-renders
 4. `GET /v1/jobs/{id}` 等待 `succeeded`，再读取 `GET /v1/artifacts/{artifactId}`。
 
 同一幂等键和同一请求返回原任务；同键不同请求返回 409。快照包含引用素材的字节，后续场景编辑或素材退役不改变它。撤回快照会阻止新工作，已接受的任务仍使用固定输入。任务取消和结果提交竞争同一个持久状态；终态完成后不可取消。
+
+## 错误诊断
+
+默认错误仍是 `{"code","error"}`，状态码和文本与历史版本一致。需要定位到具体图层的客户端可在请求中加 `Accept: application/vnd.atlas.diagnostics.v2+json` 或 `Atlas-Diagnostics: v2`，错误响应会改为 v2 报告：诊断绑定到实际被检查内容的规范摘要，带图层 JSON Pointer 路径、祖先组和字段，渲染预算拒绝还会给出各图层贡献的像素数。保存场景和导入交换包对相同内容给出一致的诊断依据；场景随后被编辑不会改变已冻结快照的诊断基准。无法绑定内容的错误（语法错误、实体不存在等）继续返回原结构。详见 `docs/api.md`。
 
 ## 范围与限制
 

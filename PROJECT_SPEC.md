@@ -27,7 +27,9 @@
 
 `internal/model` 定义实体、错误和摘要；`geometry` 负责矩阵；`paint` 负责采样；`scene` 校验文档和引用；`codec` 限制和编码 PNG；`raster` 编译并绘制；`persist` 独占打开、校验和提交；`service` 组织业务状态；`engine` 执行任务；`bundle` 负责交换格式；`observe` 提供像素与状态观察；`httpapi` 提供 HTTP 入口。具体工作流及跨模块路径见 `.project-manifest.json`。
 
-所有JSON请求拒绝未知字段与尾随第二个值，最多12 MiB；素材入口另限2 MiB。领域错误返回 JSON code/error；400输入不合法、404实体不存在、409状态或版本冲突、410结果已清理、429预算或队列不足。内部持久化错误对外返回500。
+所有JSON请求拒绝未知字段与尾随第二个值，最多12 MiB；素材入口另限2 MiB。领域错误默认返回 JSON code/error；400输入不合法、404实体不存在、409状态或版本冲突、410结果已清理、429预算或队列不足。内部持久化错误对外返回500。
+
+客户端可通过 `Accept: application/vnd.atlas.diagnostics.v2+json` 或 `Atlas-Diagnostics: v2` 选择 v2 诊断。此时凡能定位到被检查内容的拒绝返回 `protocolVersion`、`subject` 和 `diagnostics`：`subject` 用提交文档的规范摘要标识实际检查的那份内容，快照编译额外带快照摘要、修订和倍数；诊断用 JSON Pointer 指回图层路径、祖先组和字段。保存与包导入对相同文档给出相同摘要和诊断；场景后续编辑不改变已冻结快照的诊断基准。渲染预算拒绝列出各可绘制图层的像素贡献，且不会先接收任务。无法绑定内容的错误（语法错误、实体不存在、幂等冲突）仍返回原有 code/error；旧客户端和历史状态文件不受影响。
 
 ## 数值与绘制语义
 
